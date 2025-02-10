@@ -1,10 +1,11 @@
 /**
  * controllers/documentController.js
  * Contains controller functions for Document-related operations:
- *  - Uploading a document
+ *  - Uploading a document with file, name, and tag(s)
  *  - Adding/updating tags
  *  - Getting processing status
- *  - Searching documents by tags
+ *  - Searching documents by name and tag(s)
+ *  - Deleting a document
  */
 
 const DocumentModel = require('../models/documentModel');
@@ -22,20 +23,35 @@ async function uploadDocument(req, res) {
     const fileId = uuidv4();
     const fileKey = `docs/${fileId}_${file.originalname}`;
 
-    // Upload to S3
+    // Upload file to S3
     await uploadFileToS3(fileKey, file.buffer);
 
     // Construct the S3 URI using the bucket name from the environment variables
     const s3Uri = `s3://${process.env.S3_BUCKET}/${fileKey}`;
 
-    // Create DB record
+    // Use provided name or default to original file name
+    const name = req.body.name || file.originalname;
+
+    // Parse tags if provided (expects a comma‐separated string or an array)
+    let tags = [];
+    if (req.body.tags) {
+      if (typeof req.body.tags === 'string') {
+        tags = req.body.tags.split(',').map(tag => tag.trim());
+      } else if (Array.isArray(req.body.tags)) {
+        tags = req.body.tags;
+      }
+    }
+
+    // Create DB record with provided name, file details, and tags
     const newDoc = await DocumentModel.create({
+      name: name,
       filename: file.originalname,
       fileType: file.mimetype,
       s3Key: fileKey,
+      tags: tags,
     });
 
-    // Add job to queue without awaiting its resolution
+    // Add job to queue (processing runs asynchronously)
     docProcessQueue.add({ docId: newDoc._id });
 
     const responseMessage = {
@@ -50,7 +66,6 @@ async function uploadDocument(req, res) {
     return res.status(500).json({ error: 'Upload failed.' });
   }
 }
-
 
 // Add or Update Tags
 async function addOrUpdateTags(req, res) {
@@ -84,14 +99,21 @@ async function getDocumentStatus(req, res) {
   }
 }
 
-// Search Documents by Tags
+// Search Documents by Name and Tags
 async function searchDocuments(req, res) {
   try {
-    const { tags } = req.query;
+    const { name, tags } = req.query;
     let query = {};
+
+    if (name) {
+      // Search in the 'name' field (case-insensitive)
+      query.name = { $regex: name, $options: 'i' };
+    }
     if (tags) {
-      const tagList = tags.split(',');
-      query = { tags: { $all: tagList } };
+      const tagList = typeof tags === 'string'
+        ? tags.split(',').map(t => t.trim())
+        : tags;
+      query.tags = { $all: tagList };
     }
     const docs = await DocumentModel.find(query).lean();
     return res.json({ documents: docs });
@@ -101,9 +123,26 @@ async function searchDocuments(req, res) {
   }
 }
 
+// Delete Document
+async function deleteDocument(req, res) {
+  try {
+    const docId = req.params.id;
+    const doc = await DocumentModel.findByIdAndDelete(docId);
+    if (!doc) {
+      return res.status(404).json({ error: 'Document not found.' });
+    }
+    // Optionally, delete the file from S3 here
+    return res.json({ message: 'Document deleted successfully.' });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Deletion failed.' });
+  }
+}
+
 module.exports = {
   uploadDocument,
   addOrUpdateTags,
   getDocumentStatus,
   searchDocuments,
+  deleteDocument,
 };

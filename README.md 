@@ -10,7 +10,7 @@ The Learning Lab Module is a RESTful API service that allows users to upload a v
 - **Processing Pipeline**: Extract text using OCR (Tesseract.js for images) or PDF parsing (pdf-parse), perform conversion, indexing, and summarization.
 - **Metadata & Tagging**: Store and manage document metadata and tags in MongoDB.
 - **Asynchronous Processing**: Utilize Bull and Redis for handling asynchronous processing.
-- **API Endpoints**: Endpoints for uploading, checking status, tagging, and searching documents.
+- **API Endpoints**: Endpoints for uploading, checking status, tagging, searching, and deleting documents.
 
 ## Setup
 
@@ -25,6 +25,89 @@ The Learning Lab Module is a RESTful API service that allows users to upload a v
 
 1. **Clone the Repository:**
 
-   ```bash
+   
    git clone <repository-url>
    cd <repository-directory>
+   
+2. **Install Dependencies:**
+
+   
+   npm install
+   
+3. **Create a .env File:**
+
+   Create a `.env` file in the project root with the following content (update the values with your actual credentials):
+   PORT=3000
+   MONGODB_URI=mongodb://localhost:27017/learninglab
+   AWS_ACCESS_KEY_ID=YOUR_AWS_ACCESS_KEY_ID
+   AWS_SECRET_ACCESS_KEY=YOUR_AWS_SECRET_ACCESS_KEY
+   AWS_REGION=us-east-1
+   S3_BUCKET=YOUR_S3_BUCKET_NAME
+   REDIS_HOST=127.0.0.1
+   REDIS_PORT=6379
+   
+4. **Start MongoDB and Redis:**
+
+   Make sure that both MongoDB and Redis services are running on your system.
+
+5. **Run the Application:**
+
+   
+   node server.js
+   
+   You should see a message indicating that the Learning Lab Module is running on the specified port.
+
+## API Endpoints
+
+### `GET /`
+Returns a welcome message.
+
+### `POST /documents/upload`
+Uploads a document.
+
+**Expects a `multipart/form-data` request with:**
+
+- `file`: the document file.
+- `name`: (optional) a user-supplied document name (defaults to the file's original name if not provided).
+- `tags`: (optional) a comma-separated string or array of tags.
+
+### `POST /documents/:id/tags`
+Adds or updates tags for the document identified by `:id`.
+
+#### Request body (JSON):
+{ "tags": ["tag1", "tag2"] }
+
+### `GET /documents/:id/status`
+Retrieves the processing status and metadata for the document identified by `:id`.
+
+### `GET /documents`
+Searches documents by name and tags.
+
+#### Example query:
+GET /documents?name=My%20Document&tags=tag1,tag2
+
+### `DELETE /documents/:id`
+Deletes the document identified by `:id`.
+
+
+
+## Testing with cURL
+
+### Upload Document:
+curl -X POST http://localhost:3000/documents/upload   -F "file=@/path/to/your/file.pdf"   -F "name=My Document"   -F "tags=tag1,tag2"
+
+
+### Update Tags:
+curl -X POST http://localhost:3000/documents/<documentId>/tags   -H "Content-Type: application/json"   -d '{"tags": ["newtag1", "newtag2"]}'
+
+
+### Get Document Status:
+curl http://localhost:3000/documents/<documentId>/status
+
+
+### Search Documents:
+curl "http://localhost:3000/documents?name=My%20Document&tags=tag1,tag2"
+
+
+### Delete Document:
+curl -X DELETE http://localhost:3000/documents/<documentId>

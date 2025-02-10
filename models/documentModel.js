@@ -6,6 +6,7 @@
 const mongoose = require('mongoose');
 
 const DocumentSchema = new mongoose.Schema({
+  name: String, // user-supplied document name
   filename: String,
   fileType: String,
   s3Key: String,
