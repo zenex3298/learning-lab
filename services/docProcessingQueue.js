@@ -15,27 +15,42 @@ const docProcessQueue = new Bull('docProcessQueue', {
 // Main Worker Initialization
 function initQueueWorker() {
   docProcessQueue.process(async (job) => {
-    const { docId } = job.data;
-    const docRecord = await DocumentModel.findById(docId);
-    if (!docRecord) throw new Error('Document not found in DB');
+    try {
+      console.log("Processing job:", job.id);
+      const { docId } = job.data;
+      const docRecord = await DocumentModel.findById(docId);
+      if (!docRecord) throw new Error('Document not found in DB');
+      console.log("Document record found:", docRecord);
 
-    // 1. Download file from S3
-    const fileBuffer = await downloadFileFromS3(docRecord.s3Key);
+      // 1. Download file from S3
+      console.log("Downloading file from S3 with key:", docRecord.s3Key);
+      const fileBuffer = await downloadFileFromS3(docRecord.s3Key);
+      console.log("File downloaded, size:", fileBuffer.length);
 
-    // 2. Extract text
-    const extractedText = await TextExtraction(fileBuffer, docRecord.fileType);
+      // 2. Extract text
+      console.log("Extracting text...");
+      const extractedText = await TextExtraction(fileBuffer, docRecord.fileType);
+      console.log("Text extracted (first 100 chars):", extractedText.substring(0, 100));
 
-    // 3. Summarize text
-    const summary = await Summarization(extractedText);
+      // 3. Summarize text
+      console.log("Summarizing text...");
+      const summary = await Summarization(extractedText);
+      console.log("Summary generated:", summary);
 
-    // 4. Integrate with LLM (placeholder)
-    await LLMIntegration(extractedText, summary);
+      // 4. Integrate with LLM (placeholder)
+      console.log("Integrating with LLM...");
+      await LLMIntegration(extractedText, summary);
 
-    // 5. Update MongoDB record
-    docRecord.extractedText = extractedText;
-    docRecord.summary = summary;
-    docRecord.status = 'processed';
-    await docRecord.save();
+      // 5. Update MongoDB record
+      docRecord.extractedText = extractedText;
+      docRecord.summary = summary;
+      docRecord.status = 'processed';
+      await docRecord.save();
+      console.log("Document record updated successfully for job:", job.id);
+    } catch (error) {
+      console.error("Error processing job", job.id, error);
+      throw error;
+    }
   });
 }
 

@@ -25,22 +25,32 @@ async function uploadDocument(req, res) {
     // Upload to S3
     await uploadFileToS3(fileKey, file.buffer);
 
-    // Create DB Record
+    // Construct the S3 URI using the bucket name from the environment variables
+    const s3Uri = `s3://${process.env.S3_BUCKET}/${fileKey}`;
+
+    // Create DB record
     const newDoc = await DocumentModel.create({
       filename: file.originalname,
       fileType: file.mimetype,
       s3Key: fileKey,
     });
 
-    // Add Job to Queue
-    await docProcessQueue.add({ docId: newDoc._id });
+    // Add job to queue without awaiting its resolution
+    docProcessQueue.add({ docId: newDoc._id });
 
-    return res.json({ message: 'File uploaded successfully', documentId: newDoc._id });
+    const responseMessage = {
+      message: 'File uploaded successfully',
+      documentId: newDoc._id,
+      s3Uri: s3Uri,
+    };
+    console.log("Upload response:", responseMessage);
+    return res.json(responseMessage);
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: 'Upload failed.' });
   }
 }
+
 
 // Add or Update Tags
 async function addOrUpdateTags(req, res) {
