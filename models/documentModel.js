@@ -10,10 +10,10 @@ const DocumentSchema = new mongoose.Schema({
   filename: String,
   fileType: String,
   s3Key: String,
+  textS3Key: String, // reference to the extracted text file in S3
   uploadDate: { type: Date, default: Date.now },
   tags: [String],
   status: { type: String, default: 'uploaded' },
-  extractedText: String,
   summary: String,
 });
 

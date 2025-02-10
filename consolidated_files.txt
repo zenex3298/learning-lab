@@ -84,11 +84,22 @@ const { docProcessQueue } = require('../services/docProcessingQueue');
 const { v4: uuidv4 } = require('uuid');
 
 // Upload Document
+const path = require('path');
+
+// Upload Document
 async function uploadDocument(req, res) {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file provided.' });
     }
+    
+    // Check for disallowed file types (executables)
+    const disallowedExtensions = ['.exe', '.bat', '.sh', '.msi', '.cmd'];
+    const ext = path.extname(req.file.originalname).toLowerCase();
+    if (disallowedExtensions.includes(ext)) {
+      return res.status(400).json({ error: 'Executable files are not allowed.' });
+    }
+    
     const file = req.file;
     const fileId = uuidv4();
     const fileKey = `docs/${fileId}_${file.originalname}`;
@@ -273,8 +284,9 @@ const docProcessQueue = new Bull('docProcessQueue', {
   redis: { host: '127.0.0.1', port: 6379 },
 });
 
-// Main Worker Initialization
 function initQueueWorker() {
+  console.log("Initializing Queue Worker...");
+
   docProcessQueue.process(async (job) => {
     try {
       console.log("Processing job:", job.id);
@@ -288,17 +300,17 @@ function initQueueWorker() {
       const fileBuffer = await downloadFileFromS3(docRecord.s3Key);
       console.log("File downloaded, size:", fileBuffer.length);
 
-      // 2. Extract text
+      // 2. Extract text from file based on file type
       console.log("Extracting text...");
       const extractedText = await TextExtraction(fileBuffer, docRecord.fileType);
       console.log("Text extracted (first 100 chars):", extractedText.substring(0, 100));
 
-      // 3. Summarize text
+      // 3. Summarize text (placeholder function)
       console.log("Summarizing text...");
       const summary = await Summarization(extractedText);
       console.log("Summary generated:", summary);
 
-      // 4. Integrate with LLM (placeholder)
+      // 4. Integrate with LLM (placeholder function)
       console.log("Integrating with LLM...");
       await LLMIntegration(extractedText, summary);
 
@@ -313,12 +325,13 @@ function initQueueWorker() {
       throw error;
     }
   });
+
+  console.log("Queue Worker is set up and listening for jobs.");
 }
 
-// Updated Text Extraction Function to handle various file types
+// Text Extraction Function: Handles various file types and returns text content.
 async function TextExtraction(fileBuffer, fileType) {
   if (fileType.startsWith('image/')) {
-    // Use Tesseract.js for OCR on images
     const { createWorker } = require('tesseract.js');
     const worker = createWorker();
     await worker.load();
@@ -328,18 +341,15 @@ async function TextExtraction(fileBuffer, fileType) {
     await worker.terminate();
     return text;
   } else if (fileType === 'application/pdf') {
-    // Use pdf-parse for PDF documents
     const pdfParse = require('pdf-parse');
     const data = await pdfParse(fileBuffer);
     return data.text;
   } else if (fileType === 'text/csv') {
-    // CSV files are plain text
     return fileBuffer.toString('utf8');
   } else if (
     fileType === 'application/vnd.ms-excel' ||
     fileType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
   ) {
-    // Use xlsx to convert Excel files to CSV text
     const xlsx = require('xlsx');
     const workbook = xlsx.read(fileBuffer, { type: 'buffer' });
     let text = '';
@@ -352,22 +362,18 @@ async function TextExtraction(fileBuffer, fileType) {
     fileType === 'application/msword' ||
     fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
   ) {
-    // Use mammoth to extract text from DOC/DOCX files
     const mammoth = require('mammoth');
     const result = await mammoth.extractRawText({ buffer: fileBuffer });
     return result.value;
   } else if (fileType.startsWith('video/')) {
-    // Placeholder: Video transcription is not implemented
     return "Video transcription not implemented.";
   } else {
-    // Fallback: treat as plain text
     return fileBuffer.toString('utf8');
   }
 }
 
 // Placeholder Summarization Function
 async function Summarization(fullText) {
-  // In production, replace this with a call to a summarization service or model
   return `Summary placeholder for text: ${fullText.slice(0, 50)}...`;
 }
 
@@ -389,11 +395,22 @@ module.exports = {
  */
 
 const { S3Client, PutObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
+const { PassThrough } = require('stream');
 
 const REGION = process.env.AWS_REGION || 'us-east-1';
 const BUCKET_NAME = process.env.S3_BUCKET;
 
 const s3Client = new S3Client({ region: REGION });
+
+// Helper function: convert a readable stream to a Buffer.
+async function streamToBuffer(stream) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    stream.on('data', (chunk) => chunks.push(chunk));
+    stream.on('error', reject);
+    stream.on('end', () => resolve(Buffer.concat(chunks)));
+  });
+}
 
 async function uploadFileToS3(key, buffer) {
   const command = new PutObjectCommand({
@@ -410,7 +427,8 @@ async function downloadFileFromS3(key) {
     Key: key,
   });
   const data = await s3Client.send(command);
-  return data.Body;
+  // data.Body is a stream – convert it to a Buffer.
+  return await streamToBuffer(data.Body);
 }
 
 module.exports = {
