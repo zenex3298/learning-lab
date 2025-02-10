@@ -1,0 +1,30 @@
+# Learning Lab Module
+
+## Overview
+
+The Learning Lab Module is a RESTful API service that allows users to upload a variety of document types (up to 1GB), processes them (text extraction, conversion, indexing, summarization), and updates an LLM (via RAG or fine-tuning) with the extracted content. It stores metadata in MongoDB and files in AWS S3.
+
+## Features
+
+- **Document Upload & Storage**: Securely upload files and store them in AWS S3.
+- **Processing Pipeline**: Extract text using OCR (Tesseract.js for images) or PDF parsing (pdf-parse), perform conversion, indexing, and summarization.
+- **Metadata & Tagging**: Store and manage document metadata and tags in MongoDB.
+- **Asynchronous Processing**: Utilize Bull and Redis for handling asynchronous processing.
+- **API Endpoints**: Endpoints for uploading, checking status, tagging, and searching documents.
+
+## Setup
+
+### Prerequisites
+
+- **Node.js** (v14+)
+- **MongoDB**
+- **Redis**
+- **AWS S3 Account** and corresponding credentials
+
+### Installation
+
+1. **Clone the Repository:**
+
+   ```bash
+   git clone <repository-url>
+   cd <repository-directory>
