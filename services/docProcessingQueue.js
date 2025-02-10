@@ -54,9 +54,10 @@ function initQueueWorker() {
   });
 }
 
-// Placeholder Text Extraction
+// Updated Text Extraction Function to handle various file types
 async function TextExtraction(fileBuffer, fileType) {
   if (fileType.startsWith('image/')) {
+    // Use Tesseract.js for OCR on images
     const { createWorker } = require('tesseract.js');
     const worker = createWorker();
     await worker.load();
@@ -66,21 +67,50 @@ async function TextExtraction(fileBuffer, fileType) {
     await worker.terminate();
     return text;
   } else if (fileType === 'application/pdf') {
+    // Use pdf-parse for PDF documents
     const pdfParse = require('pdf-parse');
     const data = await pdfParse(fileBuffer);
     return data.text;
+  } else if (fileType === 'text/csv') {
+    // CSV files are plain text
+    return fileBuffer.toString('utf8');
+  } else if (
+    fileType === 'application/vnd.ms-excel' ||
+    fileType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  ) {
+    // Use xlsx to convert Excel files to CSV text
+    const xlsx = require('xlsx');
+    const workbook = xlsx.read(fileBuffer, { type: 'buffer' });
+    let text = '';
+    workbook.SheetNames.forEach(sheetName => {
+      const sheet = workbook.Sheets[sheetName];
+      text += xlsx.utils.sheet_to_csv(sheet);
+    });
+    return text;
+  } else if (
+    fileType === 'application/msword' ||
+    fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+  ) {
+    // Use mammoth to extract text from DOC/DOCX files
+    const mammoth = require('mammoth');
+    const result = await mammoth.extractRawText({ buffer: fileBuffer });
+    return result.value;
+  } else if (fileType.startsWith('video/')) {
+    // Placeholder: Video transcription is not implemented
+    return "Video transcription not implemented.";
   } else {
-    // For text-based files, return the buffer as a string.
+    // Fallback: treat as plain text
     return fileBuffer.toString('utf8');
   }
 }
 
-// Placeholder Summarization
+// Placeholder Summarization Function
 async function Summarization(fullText) {
+  // In production, replace this with a call to a summarization service or model
   return `Summary placeholder for text: ${fullText.slice(0, 50)}...`;
 }
 
-// Placeholder LLM Integration
+// Placeholder LLM Integration Function
 async function LLMIntegration(extractedText, summary) {
   console.log('LLM updated with new document content and summary.');
 }
