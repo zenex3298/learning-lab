@@ -14,11 +14,22 @@ const { docProcessQueue } = require('../services/docProcessingQueue');
 const { v4: uuidv4 } = require('uuid');
 
 // Upload Document
+const path = require('path');
+
+// Upload Document
 async function uploadDocument(req, res) {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file provided.' });
     }
+    
+    // Check for disallowed file types (executables)
+    const disallowedExtensions = ['.exe', '.bat', '.sh', '.msi', '.cmd'];
+    const ext = path.extname(req.file.originalname).toLowerCase();
+    if (disallowedExtensions.includes(ext)) {
+      return res.status(400).json({ error: 'Executable files are not allowed.' });
+    }
+    
     const file = req.file;
     const fileId = uuidv4();
     const fileKey = `docs/${fileId}_${file.originalname}`;
