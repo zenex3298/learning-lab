@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Learning Lab Module is a RESTful API service that allows users to upload a variety of document types (up to 1GB), processes them (text extraction, conversion, indexing, summarization), and updates an LLM (via RAG or fine-tuning) with the extracted content. It stores metadata in MongoDB and files in AWS S3.
+The Learning Lab Module is a RESTful API service that allows users to upload a variety of document types (up to 1GB), process them (text extraction, conversion, indexing, summarization), and update an LLM (via RAG or fine-tuning) with the extracted content. It stores metadata in MongoDB and files in AWS S3.
 
 ## Features
 
@@ -16,18 +16,16 @@ The Learning Lab Module is a RESTful API service that allows users to upload a v
 ## How It Works
 
 ### File Upload & S3 Key
-The document is uploaded to S3 under the `docs/` folder (e.g., `docs/_sample.pdf`).
+The document is uploaded to S3 under the `docs/` folder (e.g., `docs/sample.pdf`).
 
 ### Text Extraction
-After downloading the original file and extracting text, the code creates a new key by taking the original file’s key, removing its extension, and prepending the `text/` folder, then appending `.txt`. For example, if the original key is `docs/abcd_sample.pdf`, the text file key becomes `text/abcd_sample.txt`.
+After downloading the original file and extracting text, the code creates a new key by taking the original file’s key, removing its extension, and prepending the `text/` folder, then appending `.txt`. For example, if the original key is `docs/sample.pdf`, the text file key becomes `text/sample.txt`.
 
 ### Upload Extracted Text
 The extracted text is converted to a UTF‑8 buffer and uploaded to S3 under the newly constructed key.
 
 ### Subsequent Processing
 The code then continues with summarization, placeholder LLM integration, and updates the MongoDB record.
-
-Simply replace your current `services/docProcessingQueue.js` with the updated code to ensure that every time a document is processed, its extracted text is stored as a separate file in the S3 `text/` subfolder, while keeping the same naming structure as the original file (with a `.txt` extension).
 
 ### Accessing Files on AWS for RAG
 
@@ -37,39 +35,28 @@ To access the extracted text files stored in S3 for Retrieval-Augmented Generati
    ```sh
    aws s3 ls s3://YOUR_S3_BUCKET/text/
    ```
-   This will display a list of extracted text files available in the `text/` folder.
-
+   
 2. **Download an Extracted Text File**
    ```sh
    aws s3 cp s3://YOUR_S3_BUCKET/text/<filename>.txt ./
    ```
-   This downloads the extracted text file locally for further processing.
-
+   
 3. **Retrieve a File's Content for LLM Input**
    ```sh
    aws s3api get-object --bucket YOUR_S3_BUCKET --key text/<filename>.txt output.txt
    cat output.txt
    ```
-   This retrieves the extracted text, which can then be used in an LLM pipeline.
-
+   
 4. **Direct Programmatic Retrieval (Python Example)**
    ```python
    import boto3
    s3 = boto3.client('s3')
    bucket_name = "YOUR_S3_BUCKET"
-   file_key = "text/abcd_sample.txt"
+   file_key = "text/sample.txt"
    response = s3.get_object(Bucket=bucket_name, Key=file_key)
    text_content = response['Body'].read().decode('utf-8')
    print(text_content)
    ```
-   This allows an AI pipeline to fetch extracted text dynamically for RAG processing.
-
-### Summary
-- The original file is still stored under `docs/` as before.
-- The extracted text is no longer saved directly in MongoDB.
-- Instead, the extracted text is uploaded as a new text file under the `text/` folder in S3.
-- The MongoDB document is updated with the reference to the text file via the `textS3Key` field (along with other metadata).
-- Extracted text files can be accessed from AWS S3 for RAG-based LLM processing.
 
 ## Setup
 
@@ -83,22 +70,17 @@ To access the extracted text files stored in S3 for Retrieval-Augmented Generati
 ### Installation
 
 1. **Clone the Repository:**
-
    ```sh
    git clone <repository-url>
    cd <repository-directory>
    ```
 
 2. **Install Dependencies:**
-
    ```sh
    npm install
    ```
 
 3. **Create a .env File:**
-
-   Create a `.env` file in the project root with the following content (update the values with your actual credentials):
-
    ```env
    PORT=3000
    MONGODB_URI=mongodb://localhost:27017/learninglab
@@ -111,16 +93,15 @@ To access the extracted text files stored in S3 for Retrieval-Augmented Generati
    ```
 
 4. **Start MongoDB and Redis:**
-
-   Ensure that both MongoDB and Redis services are running on your system.
+   ```sh
+   sudo service mongod start
+   redis-server
+   ```
 
 5. **Run the Application:**
-
    ```sh
    node server.js
    ```
-
-   You should see a message indicating that the Learning Lab Module is running on the specified port.
 
 ## API Endpoints
 
@@ -189,4 +170,3 @@ curl "http://localhost:3000/documents?name=My%20Document&tags=tag1,tag2"
 ```sh
 curl -X DELETE http://localhost:3000/documents/<documentId>
 ```
-
