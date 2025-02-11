@@ -86,32 +86,118 @@ async function extractTextWithAWS(fileType, s3Bucket, s3Key) {
   }
 }
 
+// Helper: Uses AWS services for text extraction from images and audio/video.
+async function extractTextWithAWS(fileType, s3Bucket, s3Key) {
+  // For images: use Textract.
+  if (fileType.startsWith('image/')) {
+    const command = new DetectDocumentTextCommand({
+      Document: {
+        S3Object: { Bucket: s3Bucket, Name: s3Key }
+      }
+    });
+    const response = await textractClient.send(command);
+    let extractedText = '';
+    if (response.Blocks) {
+      response.Blocks.forEach(block => {
+        if (block.BlockType === 'LINE' && block.Text) {
+          extractedText += block.Text + '\n';
+        }
+      });
+    }
+    return extractedText;
+  }
+  // For audio/video: use Transcribe.
+  else if (fileType.startsWith('audio/') || fileType.startsWith('video/')) {
+    const jobName = `transcribe-${uuidv4()}`;
+    const mediaUri = `s3://${s3Bucket}/${s3Key}`;
+    // Determine media format from file extension:
+    const lowerKey = s3Key.toLowerCase();
+    let mediaFormat = 'mp3';
+    if (lowerKey.endsWith('.wav')) mediaFormat = 'wav';
+    else if (lowerKey.endsWith('.mp4')) mediaFormat = 'mp4';
+    else if (lowerKey.endsWith('.mov')) mediaFormat = 'mov';
+    const params = {
+      TranscriptionJobName: jobName,
+      LanguageCode: "en-US",
+      MediaFormat: mediaFormat,
+      Media: { MediaFileUri: mediaUri },
+      OutputBucketName: s3Bucket,
+    };
+    await transcribeClient.send(new StartTranscriptionJobCommand(params));
+    let jobCompleted = false;
+    let transcript = "";
+    while (!jobCompleted) {
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      const jobData = await transcribeClient.send(new GetTranscriptionJobCommand({ TranscriptionJobName: jobName }));
+      const status = jobData.TranscriptionJob.TranscriptionJobStatus;
+      if (status === "COMPLETED") {
+        jobCompleted = true;
+        const transcriptFileUri = jobData.TranscriptionJob.Transcript.TranscriptFileUri;
+        // Extract the transcript file's S3 key from the URI.
+        const parts = transcriptFileUri.split(`/${s3Bucket}/`);
+        if (parts.length < 2) {
+          throw new Error("Unable to extract transcript file key from URI");
+        }
+        const transcriptKey = parts[1];
+        const transcriptBuffer = await downloadFileFromS3(transcriptKey);
+        const transcriptJson = JSON.parse(transcriptBuffer.toString('utf8'));
+        transcript = transcriptJson.results.transcripts[0].transcript;
+      } else if (status === "FAILED") {
+        throw new Error("Transcription job failed");
+      }
+    }
+    return transcript;
+  } else {
+    return "";
+  }
+}
+
+// Main TextExtraction function: Determines which method to use.
 async function TextExtraction(fileBuffer, fileType, s3Bucket, s3Key) {
   const lowerKey = s3Key.toLowerCase();
-  // If fileType is ambiguous, check extension.
+  console.log("TextExtraction: fileType =", fileType, "lowerKey =", lowerKey);
+
+  // For images: explicitly call Textract.
+  if (fileType.startsWith('image/')) {
+    console.log("File type indicates image. Using Textract.");
+    return await extractTextWithAWS(fileType, s3Bucket, s3Key);
+  }
+  
+  // If fileType is ambiguous.
   if (fileType === 'application/octet-stream') {
     if (lowerKey.endsWith('.mp3') || lowerKey.endsWith('.wav')) {
+      console.log("Ambiguous type: Treating as audio.");
       return await extractTextWithAWS('audio/', s3Bucket, s3Key);
     }
     if (lowerKey.endsWith('.mp4') || lowerKey.endsWith('.mov')) {
+      console.log("Ambiguous type: Treating as video.");
       return await extractTextWithAWS('video/', s3Bucket, s3Key);
     }
   }
+  
   // If fileType explicitly indicates audio or video.
   if (fileType.startsWith('audio/') || fileType.startsWith('video/')) {
+    console.log("File type indicates audio/video.");
     return await extractTextWithAWS(fileType, s3Bucket, s3Key);
   }
-  // For other types, use local methods.
+  // For PDFs.
   else if (fileType === 'application/pdf') {
+    console.log("File type PDF detected.");
     const pdfParse = require('pdf-parse');
     const data = await pdfParse(fileBuffer);
     return data.text;
-  } else if (fileType === 'text/csv') {
+  }
+  // For CSV files.
+  else if (fileType === 'text/csv') {
+    console.log("File type CSV detected.");
     return fileBuffer.toString('utf8');
-  } else if (
+  }
+  // For Excel files.
+  else if (
     fileType === 'application/vnd.ms-excel' ||
     fileType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
   ) {
+    console.log("File type Excel detected.");
     const xlsx = require('xlsx');
     const workbook = xlsx.read(fileBuffer, { type: 'buffer' });
     let text = '';
@@ -120,17 +206,25 @@ async function TextExtraction(fileBuffer, fileType, s3Bucket, s3Key) {
       text += xlsx.utils.sheet_to_csv(sheet);
     });
     return text;
-  } else if (
+  }
+  // For Word documents.
+  else if (
     fileType === 'application/msword' ||
     fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
   ) {
+    console.log("File type Word detected.");
     const mammoth = require('mammoth');
     const result = await mammoth.extractRawText({ buffer: fileBuffer });
     return result.value;
-  } else {
+  }
+  // Default: treat as plain text.
+  else {
+    console.log("Default branch: Treating as plain text.");
     return fileBuffer.toString('utf8');
   }
 }
+
+
 
 function initQueueWorker() {
   console.log("Initializing Queue Worker...");
