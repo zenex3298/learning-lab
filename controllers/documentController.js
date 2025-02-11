@@ -1,29 +1,29 @@
 /**
  * controllers/documentController.js
- * Contains controller functions for Document-related operations:
- *  - Uploading a document with file, name, and tag(s)
- *  - Adding/updating tags
- *  - Getting processing status
- *  - Searching documents by name and tag(s)
- *  - Deleting a document
+ * -----------------------------------------------------------------------------
+ * Controller functions handling document-related operations:
+ *   - Uploading documents with file, name, and tags.
+ *   - Adding/updating document tags.
+ *   - Retrieving processing status.
+ *   - Searching documents by name and tags.
+ *   - Deleting documents.
+ * -----------------------------------------------------------------------------
  */
 
 const DocumentModel = require('../models/documentModel');
 const { uploadFileToS3 } = require('../services/s3Service');
 const { docProcessQueue } = require('../services/docProcessingQueue');
 const { v4: uuidv4 } = require('uuid');
-
-// Upload Document
 const path = require('path');
 
-// Upload Document
+// Upload Document: Handles file upload, validation, S3 storage, and DB record creation.
 async function uploadDocument(req, res) {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file provided.' });
     }
     
-    // Check for disallowed file types (executables)
+    // Validate file extension against disallowed executable types.
     const disallowedExtensions = ['.exe', '.bat', '.sh', '.msi', '.cmd'];
     const ext = path.extname(req.file.originalname).toLowerCase();
     if (disallowedExtensions.includes(ext)) {
@@ -34,16 +34,16 @@ async function uploadDocument(req, res) {
     const fileId = uuidv4();
     const fileKey = `docs/${fileId}_${file.originalname}`;
 
-    // Upload file to S3
+    // Upload file buffer to S3.
     await uploadFileToS3(fileKey, file.buffer);
 
-    // Construct the S3 URI using the bucket name from the environment variables
+    // Construct S3 URI using bucket name.
     const s3Uri = `s3://${process.env.S3_BUCKET}/${fileKey}`;
 
-    // Use provided name or default to original file name
+    // Use provided name or default to original file name.
     const name = req.body.name || file.originalname;
 
-    // Parse tags if provided (expects a comma‐separated string or an array)
+    // Parse tags from a comma-separated string or array.
     let tags = [];
     if (req.body.tags) {
       if (typeof req.body.tags === 'string') {
@@ -53,7 +53,7 @@ async function uploadDocument(req, res) {
       }
     }
 
-    // Create DB record with provided name, file details, and tags
+    // Create a new document record in MongoDB.
     const newDoc = await DocumentModel.create({
       name: name,
       filename: file.originalname,
@@ -62,7 +62,7 @@ async function uploadDocument(req, res) {
       tags: tags,
     });
 
-    // Add job to queue (processing runs asynchronously)
+    // Enqueue job for asynchronous processing.
     docProcessQueue.add({ docId: newDoc._id });
 
     const responseMessage = {
@@ -78,7 +78,7 @@ async function uploadDocument(req, res) {
   }
 }
 
-// Add or Update Tags
+// Add or Update Tags: Updates the tags for an existing document.
 async function addOrUpdateTags(req, res) {
   try {
     const { tags } = req.body;
@@ -87,6 +87,7 @@ async function addOrUpdateTags(req, res) {
     if (!doc) {
       return res.status(404).json({ error: 'Document not found.' });
     }
+    // Only accept array of tags; otherwise default to empty array.
     doc.tags = Array.isArray(tags) ? tags : [];
     await doc.save();
     return res.json({ message: 'Tags updated.', document: doc });
@@ -96,7 +97,7 @@ async function addOrUpdateTags(req, res) {
   }
 }
 
-// Get Document Status
+// Get Document Status: Retrieves the document record and processing status.
 async function getDocumentStatus(req, res) {
   try {
     const doc = await DocumentModel.findById(req.params.id).lean();
@@ -110,14 +111,13 @@ async function getDocumentStatus(req, res) {
   }
 }
 
-// Search Documents by Name and Tags
+// Search Documents: Finds documents by name (case-insensitive) and matching tags.
 async function searchDocuments(req, res) {
   try {
     const { name, tags } = req.query;
     let query = {};
 
     if (name) {
-      // Search in the 'name' field (case-insensitive)
       query.name = { $regex: name, $options: 'i' };
     }
     if (tags) {
@@ -134,7 +134,7 @@ async function searchDocuments(req, res) {
   }
 }
 
-// Delete Document
+// Delete Document: Removes a document record from MongoDB and optionally its S3 file.
 async function deleteDocument(req, res) {
   try {
     const docId = req.params.id;
@@ -142,7 +142,7 @@ async function deleteDocument(req, res) {
     if (!doc) {
       return res.status(404).json({ error: 'Document not found.' });
     }
-    // Optionally, delete the file from S3 here
+    // Note: Consider adding S3 deletion logic here if needed.
     return res.json({ message: 'Document deleted successfully.' });
   } catch (err) {
     console.error(err);

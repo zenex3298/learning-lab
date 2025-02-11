@@ -1,9 +1,15 @@
 /**
  * services/docProcessingQueue.js
- * Sets up a Bull queue for asynchronous document processing (OCR, summarization, LLM)
- * and stores the extracted text (transcript) as a separate text file in the S3 bucket under the "txt" subfolder.
+ * -----------------------------------------------------------------------------
+ * Sets up a Bull queue for asynchronous document processing.
+ *
+ * Processes include:
+ *   - Text extraction via AWS Textract (for images) or Transcribe (for audio/video).
+ *   - Handling various file types (PDF, CSV, Excel, Word, plain text).
+ *   - Uploading extracted text to S3.
+ *   - Generating summaries and integrating with an LLM.
+ * -----------------------------------------------------------------------------
  */
-
 const Bull = require('bull');
 const DocumentModel = require('../models/documentModel');
 const { downloadFileFromS3, uploadFileToS3 } = require('./s3Service');
@@ -15,85 +21,29 @@ const fetch = require('node-fetch');
 const textractClient = new TextractClient({ region: process.env.AWS_REGION });
 const transcribeClient = new TranscribeClient({ region: process.env.AWS_REGION });
 
+const { BedrockRuntimeClient, InvokeModelCommand } = require("@aws-sdk/client-bedrock-runtime");
+const bedrockClient = new BedrockRuntimeClient({ region: process.env.AWS_REGION });
+
 const docProcessQueue = new Bull('docProcessQueue', {
   redis: { host: '127.0.0.1', port: 6379 },
 });
 
-async function extractTextWithAWS(fileType, s3Bucket, s3Key) {
-  // For images: use Textract.
-  if (fileType.startsWith('image/')) {
-    const command = new DetectDocumentTextCommand({
-      Document: {
-        S3Object: { Bucket: s3Bucket, Name: s3Key }
-      }
-    });
-    const response = await textractClient.send(command);
-    let extractedText = '';
-    if (response.Blocks) {
-      response.Blocks.forEach(block => {
-        if (block.BlockType === 'LINE' && block.Text) {
-          extractedText += block.Text + '\n';
-        }
-      });
-    }
-    return extractedText;
-  }
-  // For audio/video: use Transcribe.
-  else if (fileType.startsWith('audio/') || fileType.startsWith('video/')) {
-    const jobName = `transcribe-${uuidv4()}`;
-    const mediaUri = `s3://${s3Bucket}/${s3Key}`;
-    // Determine media format from file extension:
-    const lowerKey = s3Key.toLowerCase();
-    let mediaFormat = 'mp3';
-    if (lowerKey.endsWith('.wav')) mediaFormat = 'wav';
-    else if (lowerKey.endsWith('.mp4')) mediaFormat = 'mp4';
-    else if (lowerKey.endsWith('.mov')) mediaFormat = 'mov';
-    const params = {
-      TranscriptionJobName: jobName,
-      LanguageCode: "en-US",
-      MediaFormat: mediaFormat,
-      Media: { MediaFileUri: mediaUri },
-      OutputBucketName: s3Bucket,
-    };
-    await transcribeClient.send(new StartTranscriptionJobCommand(params));
-    let jobCompleted = false;
-    let transcript = "";
-    while (!jobCompleted) {
-      await new Promise(resolve => setTimeout(resolve, 5000));
-      const jobData = await transcribeClient.send(new GetTranscriptionJobCommand({ TranscriptionJobName: jobName }));
-      const status = jobData.TranscriptionJob.TranscriptionJobStatus;
-      if (status === "COMPLETED") {
-        jobCompleted = true;
-        const transcriptFileUri = jobData.TranscriptionJob.Transcript.TranscriptFileUri;
-        // Extract the transcript file's S3 key from the URI.
-        // Example URI: https://s3.us-east-1.amazonaws.com/<bucket>/<key>
-        const parts = transcriptFileUri.split(`/${s3Bucket}/`);
-        if (parts.length < 2) {
-          throw new Error("Unable to extract transcript file key from URI");
-        }
-        const transcriptKey = parts[1];
-        // Use your S3 client to download the transcript file.
-        const transcriptBuffer = await downloadFileFromS3(transcriptKey);
-        const transcriptJson = JSON.parse(transcriptBuffer.toString('utf8'));
-        transcript = transcriptJson.results.transcripts[0].transcript;
-      } else if (status === "FAILED") {
-        throw new Error("Transcription job failed");
-      }
-    }
-    return transcript;
-  } else {
-    return "";
-  }
-}
 
-// Helper: Uses AWS services for text extraction from images and audio/video.
+/**
+ * extractTextWithAWS
+ * -----------------------------------------------------------------------------
+ * Uses AWS Textract for images and AWS Transcribe for audio/video files.
+ *
+ * @param {string} fileType - MIME type of the file.
+ * @param {string} s3Bucket - S3 bucket name.
+ * @param {string} s3Key - S3 key for the file.
+ * @returns {string} Extracted text.
+ */
 async function extractTextWithAWS(fileType, s3Bucket, s3Key) {
-  // For images: use Textract.
+  // For image files: use Textract.
   if (fileType.startsWith('image/')) {
     const command = new DetectDocumentTextCommand({
-      Document: {
-        S3Object: { Bucket: s3Bucket, Name: s3Key }
-      }
+      Document: { S3Object: { Bucket: s3Bucket, Name: s3Key } },
     });
     const response = await textractClient.send(command);
     let extractedText = '';
@@ -106,11 +56,10 @@ async function extractTextWithAWS(fileType, s3Bucket, s3Key) {
     }
     return extractedText;
   }
-  // For audio/video: use Transcribe.
+  // For audio/video files: use Transcribe.
   else if (fileType.startsWith('audio/') || fileType.startsWith('video/')) {
     const jobName = `transcribe-${uuidv4()}`;
     const mediaUri = `s3://${s3Bucket}/${s3Key}`;
-    // Determine media format from file extension:
     const lowerKey = s3Key.toLowerCase();
     let mediaFormat = 'mp3';
     if (lowerKey.endsWith('.wav')) mediaFormat = 'wav';
@@ -124,6 +73,8 @@ async function extractTextWithAWS(fileType, s3Bucket, s3Key) {
       OutputBucketName: s3Bucket,
     };
     await transcribeClient.send(new StartTranscriptionJobCommand(params));
+    
+    // Poll until the transcription job is complete.
     let jobCompleted = false;
     let transcript = "";
     while (!jobCompleted) {
@@ -133,7 +84,6 @@ async function extractTextWithAWS(fileType, s3Bucket, s3Key) {
       if (status === "COMPLETED") {
         jobCompleted = true;
         const transcriptFileUri = jobData.TranscriptionJob.Transcript.TranscriptFileUri;
-        // Extract the transcript file's S3 key from the URI.
         const parts = transcriptFileUri.split(`/${s3Bucket}/`);
         if (parts.length < 2) {
           throw new Error("Unable to extract transcript file key from URI");
@@ -152,7 +102,17 @@ async function extractTextWithAWS(fileType, s3Bucket, s3Key) {
   }
 }
 
-// Main TextExtraction function: Determines which method to use.
+/**
+ * TextExtraction
+ * -----------------------------------------------------------------------------
+ * Determines the correct text extraction method based on file type.
+ *
+ * @param {Buffer} fileBuffer - The file content as a Buffer.
+ * @param {string} fileType - MIME type of the file.
+ * @param {string} s3Bucket - S3 bucket name.
+ * @param {string} s3Key - S3 key for the file.
+ * @returns {string} The extracted text.
+ */
 async function TextExtraction(fileBuffer, fileType, s3Bucket, s3Key) {
   const lowerKey = s3Key.toLowerCase();
   console.log("TextExtraction: fileType =", fileType, "lowerKey =", lowerKey);
@@ -225,7 +185,11 @@ async function TextExtraction(fileBuffer, fileType, s3Bucket, s3Key) {
 }
 
 
-
+/**
+ * initQueueWorker
+ * -----------------------------------------------------------------------------
+ * Initializes the Bull queue worker to process document jobs.
+ */
 function initQueueWorker() {
   console.log("Initializing Queue Worker...");
 
@@ -281,10 +245,15 @@ function initQueueWorker() {
 }
 
 
-const { BedrockRuntimeClient, InvokeModelCommand } = require("@aws-sdk/client-bedrock-runtime");
 
-const bedrockClient = new BedrockRuntimeClient({ region: process.env.AWS_REGION });
-
+/**
+ * Summarization
+ * -----------------------------------------------------------------------------
+ * Invokes an AWS Bedrock model to generate a summary of the extracted text.
+ *
+ * @param {string} fullText - The extracted text content.
+ * @returns {string} A summary of the text.
+ */
 async function Summarization(fullText) {
   try {
     const params = {
@@ -305,7 +274,15 @@ async function Summarization(fullText) {
 
 
 
-// Placeholder LLM Integration Function
+/**
+ * LLMIntegration
+ * -----------------------------------------------------------------------------
+ * Placeholder for integrating with a Language Model using the extracted text
+ * and its summary.
+ *
+ * @param {string} extractedText - The extracted document text.
+ * @param {string} summary - The generated summary of the text.
+ */
 async function LLMIntegration(extractedText, summary) {
   console.log('LLM updated with new document content and summary.');
 }

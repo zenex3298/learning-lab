@@ -11,6 +11,7 @@ The Learning Lab Module is a RESTful API service that allows users to upload a v
 - **Metadata & Tagging**: Store and manage document metadata and tags in MongoDB.
 - **Asynchronous Processing**: Utilize Bull and Redis for handling asynchronous processing.
 - **API Endpoints**: Endpoints for uploading, checking status, tagging, searching, and deleting documents.
+- **RAG Integration**: Processed text is stored in S3 and can be retrieved for use in a Retrieval-Augmented Generation (RAG) pipeline for an LLM.
 
 ## How It Works
 
@@ -28,11 +29,47 @@ The code then continues with summarization, placeholder LLM integration, and upd
 
 Simply replace your current `services/docProcessingQueue.js` with the updated code to ensure that every time a document is processed, its extracted text is stored as a separate file in the S3 `text/` subfolder, while keeping the same naming structure as the original file (with a `.txt` extension).
 
+### Accessing Files on AWS for RAG
+
+To access the extracted text files stored in S3 for Retrieval-Augmented Generation (RAG):
+
+1. **List Available Processed Files**
+   ```sh
+   aws s3 ls s3://YOUR_S3_BUCKET/text/
+   ```
+   This will display a list of extracted text files available in the `text/` folder.
+
+2. **Download an Extracted Text File**
+   ```sh
+   aws s3 cp s3://YOUR_S3_BUCKET/text/<filename>.txt ./
+   ```
+   This downloads the extracted text file locally for further processing.
+
+3. **Retrieve a File's Content for LLM Input**
+   ```sh
+   aws s3api get-object --bucket YOUR_S3_BUCKET --key text/<filename>.txt output.txt
+   cat output.txt
+   ```
+   This retrieves the extracted text, which can then be used in an LLM pipeline.
+
+4. **Direct Programmatic Retrieval (Python Example)**
+   ```python
+   import boto3
+   s3 = boto3.client('s3')
+   bucket_name = "YOUR_S3_BUCKET"
+   file_key = "text/abcd_sample.txt"
+   response = s3.get_object(Bucket=bucket_name, Key=file_key)
+   text_content = response['Body'].read().decode('utf-8')
+   print(text_content)
+   ```
+   This allows an AI pipeline to fetch extracted text dynamically for RAG processing.
+
 ### Summary
 - The original file is still stored under `docs/` as before.
 - The extracted text is no longer saved directly in MongoDB.
 - Instead, the extracted text is uploaded as a new text file under the `text/` folder in S3.
 - The MongoDB document is updated with the reference to the text file via the `textS3Key` field (along with other metadata).
+- Extracted text files can be accessed from AWS S3 for RAG-based LLM processing.
 
 ## Setup
 
