@@ -12,7 +12,10 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@aws-sdk/client-textract": "^3.744.0",
+    "@aws-sdk/client-transcribe": "^3.744.0",
     "mammoth": "^1.9.0",
+    "node-fetch": "^2.7.0",
     "pdf-parse": "^1.1.1",
     "tesseract.js": "^6.0.0",
     "xlsx": "^0.18.5"

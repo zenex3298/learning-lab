@@ -57,10 +57,10 @@ const DocumentSchema = new mongoose.Schema({
   filename: String,
   fileType: String,
   s3Key: String,
+  textS3Key: String, // reference to the extracted text file in S3
   uploadDate: { type: Date, default: Date.now },
   tags: [String],
   status: { type: String, default: 'uploaded' },
-  extractedText: String,
   summary: String,
 });
 
@@ -272,12 +272,13 @@ module.exports = router;
 ===== File: services/docProcessingQueue.js =====
 /**
  * services/docProcessingQueue.js
- * Sets up a Bull queue for asynchronous document processing (OCR, summarization, LLM).
+ * Sets up a Bull queue for asynchronous document processing (OCR, summarization, LLM)
+ * and stores the extracted text as a separate text file in the S3 bucket under the "text" subfolder.
  */
 
 const Bull = require('bull');
 const DocumentModel = require('../models/documentModel');
-const { downloadFileFromS3 } = require('./s3Service');
+const { downloadFileFromS3, uploadFileToS3 } = require('./s3Service');
 
 // Create the Queue
 const docProcessQueue = new Bull('docProcessQueue', {
@@ -305,6 +306,15 @@ function initQueueWorker() {
       const extractedText = await TextExtraction(fileBuffer, docRecord.fileType);
       console.log("Text extracted (first 100 chars):", extractedText.substring(0, 100));
 
+      // 2.5. Upload the extracted text as a separate file in S3 under the "text" subfolder.
+      // Maintain the same file naming structure as the original (remove extension, add ".txt")
+      const originalKey = docRecord.s3Key; // e.g., "docs/<uuid>_sample.pdf"
+      const filenamePart = originalKey.split('/')[1]; // e.g., "<uuid>_sample.pdf"
+      const baseName = filenamePart.replace(/\.[^/.]+$/, ""); // e.g., "<uuid>_sample"
+      const textKey = `text/${baseName}.txt`;
+      await uploadFileToS3(textKey, Buffer.from(extractedText, 'utf8'));
+      console.log("Extracted text file stored at S3 key:", textKey);
+
       // 3. Summarize text (placeholder function)
       console.log("Summarizing text...");
       const summary = await Summarization(extractedText);
@@ -314,8 +324,8 @@ function initQueueWorker() {
       console.log("Integrating with LLM...");
       await LLMIntegration(extractedText, summary);
 
-      // 5. Update MongoDB record
-      docRecord.extractedText = extractedText;
+      // 5. Update MongoDB record: store the text file reference instead of the full extracted text
+      docRecord.textS3Key = textKey;
       docRecord.summary = summary;
       docRecord.status = 'processed';
       await docRecord.save();
