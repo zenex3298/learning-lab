@@ -280,10 +280,30 @@ function initQueueWorker() {
   console.log("Queue Worker is set up and listening for jobs.");
 }
 
-// Placeholder Summarization Function
+
+const { BedrockRuntimeClient, InvokeModelCommand } = require("@aws-sdk/client-bedrock-runtime");
+
+const bedrockClient = new BedrockRuntimeClient({ region: process.env.AWS_REGION });
+
 async function Summarization(fullText) {
-  return `Summary placeholder for text: ${fullText.slice(0, 50)}...`;
+  try {
+    const params = {
+      modelId: "huggingface-textgeneration2-gpt-neox-20b-fp16", // Confirm this model ID per documentation.
+      body: fullText, // Use "body" instead of "Content"
+      // Add any additional parameters if required.
+    };
+    const command = new InvokeModelCommand(params);
+    const response = await bedrockClient.send(command);
+    return response.OutputText || "";
+  } catch (error) {
+    console.error("Error invoking Bedrock model:", error);
+    return `Summary placeholder for text: ${fullText.slice(0, 50)}...`;
+  }
 }
+
+
+
+
 
 // Placeholder LLM Integration Function
 async function LLMIntegration(extractedText, summary) {
