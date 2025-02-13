@@ -20,3 +20,7 @@ coverage/
 # Build output directories
 dist/
 build/
+
+# Coding Files
+prep_codebase.app
+consolidated_files.txt
