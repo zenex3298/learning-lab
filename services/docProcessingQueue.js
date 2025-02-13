@@ -12,7 +12,7 @@
  */
 const Bull = require('bull');
 const DocumentModel = require('../models/documentModel');
-const { downloadFileFromS3, uploadFileToS3 } = require('./s3Service');
+const { downloadFileFromS3, uploadFileToS3, deleteFileFromS3 } = require('./s3Service');
 const { TextractClient, DetectDocumentTextCommand } = require("@aws-sdk/client-textract");
 const { TranscribeClient, StartTranscriptionJobCommand, GetTranscriptionJobCommand } = require("@aws-sdk/client-transcribe");
 const { v4: uuidv4 } = require('uuid');
@@ -21,8 +21,10 @@ const fetch = require('node-fetch');
 const textractClient = new TextractClient({ region: process.env.AWS_REGION });
 const transcribeClient = new TranscribeClient({ region: process.env.AWS_REGION });
 
-const { BedrockRuntimeClient, InvokeModelCommand } = require("@aws-sdk/client-bedrock-runtime");
-const bedrockClient = new BedrockRuntimeClient({ region: process.env.AWS_REGION });
+const { RekognitionClient, DetectModerationLabelsCommand, StartContentModerationCommand, GetContentModerationCommand } = require('@aws-sdk/client-rekognition');
+const rekognitionClient = new RekognitionClient({ region: process.env.AWS_REGION });
+
+
 
 const docProcessQueue = new Bull('docProcessQueue', {
   redis: { host: '127.0.0.1', port: 6379 },
@@ -184,6 +186,53 @@ async function TextExtraction(fileBuffer, fileType, s3Bucket, s3Key) {
   }
 }
 
+/**
+ * checkContentModeration
+ * -----------------------------------------------------------------------------
+ * Performs content moderation on a file based on its MIME type.
+ * - For image files: Uses AWS Rekognition's DetectModerationLabelsCommand to
+ *   check the file buffer for any NSFW content.
+ * - For video files: Initiates a content moderation job with AWS Rekognition,
+ *   polls for the results, and checks for any NSFW labels.
+ *
+ * @param {string} fileType - The MIME type of the file.
+ * @param {Buffer} fileBuffer - The file's content as a Buffer (used for images).
+ * @param {string} s3Bucket - The name of the S3 bucket where the file is stored.
+ * @param {string} s3Key - The S3 object key identifying the file.
+ * @returns {Promise<boolean>} A promise that resolves to true if any NSFW content is detected, false otherwise.
+ * @throws {Error} Throws an error if the content moderation process fails.
+ */
+async function checkContentModeration(fileType, fileBuffer, s3Bucket, s3Key) {
+  if (fileType.startsWith('image/')) {
+    const command = new DetectModerationLabelsCommand({
+      Image: { Bytes: fileBuffer },
+      MinConfidence: 80,
+    });
+    const response = await rekognitionClient.send(command);
+    return response.ModerationLabels && response.ModerationLabels.length > 0;
+  } else if (fileType.startsWith('video/')) {
+    const startCommand = new StartContentModerationCommand({
+      Video: { S3Object: { Bucket: s3Bucket, Name: s3Key } },
+      MinConfidence: 80,
+    });
+    const startResponse = await rekognitionClient.send(startCommand);
+    const jobId = startResponse.JobId;
+    let moderationLabels = [];
+    for (let i = 0; i < 12; i++) { // Poll up to ~120 sec
+      await new Promise(resolve => setTimeout(resolve, 10000));
+      const getCommand = new GetContentModerationCommand({ JobId: jobId });
+      const getResponse = await rekognitionClient.send(getCommand);
+      if (getResponse.JobStatus === 'SUCCEEDED') {
+        moderationLabels = getResponse.ModerationLabels;
+        break;
+      }
+    }
+    return moderationLabels && moderationLabels.length > 0;
+  }
+  return false;
+}
+
+
 
 /**
  * initQueueWorker
@@ -205,6 +254,19 @@ function initQueueWorker() {
       console.log("Downloading file from S3 with key:", docRecord.s3Key);
       const fileBuffer = await downloadFileFromS3(docRecord.s3Key);
       console.log("File downloaded, size:", fileBuffer.length);
+
+      // Content Moderation for images/videos
+      if (docRecord.fileType.startsWith('image/') || docRecord.fileType.startsWith('video/')) {
+        console.log("Performing content moderation check...");
+        const flagged = await checkContentModeration(docRecord.fileType, fileBuffer, process.env.S3_BUCKET, docRecord.s3Key);
+        if (flagged) {
+          console.log("Content moderation flagged the file. Deleting from S3...");
+          await deleteFileFromS3(docRecord.s3Key);
+          docRecord.status = 'deleted due to content moderation';
+          await docRecord.save();
+          return;
+        }
+      }
 
       // Only extract and upload transcript if file is audio or video.
       if (docRecord.fileType.startsWith('audio/') || docRecord.fileType.startsWith('video/')) {

@@ -1,16 +1,15 @@
 /**
  * services/s3Service.js
  * -----------------------------------------------------------------------------
- * Provides AWS S3 integration for file uploads and downloads.
+ * Provides AWS S3 integration for file uploads, downloads, and deletions.
  * -----------------------------------------------------------------------------
  */
 
-const { S3Client, PutObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
+const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
 const { PassThrough } = require('stream');
 
 const REGION = process.env.AWS_REGION || 'us-east-1';
 const BUCKET_NAME = process.env.S3_BUCKET;
-
 const s3Client = new S3Client({ region: REGION });
 
 /**
@@ -37,6 +36,7 @@ async function streamToBuffer(stream) {
  *
  * @param {string} key - The S3 object key.
  * @param {Buffer} buffer - The file content.
+ * @returns {Promise<void>} A promise that resolves when the file is uploaded.
  */
 async function uploadFileToS3(key, buffer) {
   const command = new PutObjectCommand({
@@ -53,7 +53,7 @@ async function uploadFileToS3(key, buffer) {
  * Downloads a file from S3 and returns its content as a Buffer.
  *
  * @param {string} key - The S3 object key.
- * @returns {Buffer} The file content.
+ * @returns {Promise<Buffer>} A promise that resolves to the file content as a Buffer.
  */
 async function downloadFileFromS3(key) {
   const command = new GetObjectCommand({
@@ -64,7 +64,24 @@ async function downloadFileFromS3(key) {
   return await streamToBuffer(data.Body);
 }
 
+/**
+ * deleteFileFromS3
+ * -----------------------------------------------------------------------------
+ * Deletes a file from the specified S3 bucket using the provided key.
+ *
+ * @param {string} key - The unique S3 object key identifying the file to be deleted.
+ * @returns {Promise<void>} A promise that resolves once the file has been deleted.
+ */
+async function deleteFileFromS3(key) {
+  const command = new DeleteObjectCommand({
+    Bucket: BUCKET_NAME,
+    Key: key,
+  });
+  await s3Client.send(command);
+}
+
 module.exports = {
   uploadFileToS3,
   downloadFileFromS3,
+  deleteFileFromS3,
 };
