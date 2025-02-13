@@ -118,6 +118,7 @@ aws iam attach-user-policy --user-name NSFWUser --policy-arn arn:aws:iam::aws:po
    S3_BUCKET=YOUR_S3_BUCKET_NAME
    REDIS_HOST=127.0.0.1
    REDIS_PORT=6379
+   ACCESS_TOKEN_SECRET=test-secret
    ```
 
 4. **Start MongoDB and Redis:**
