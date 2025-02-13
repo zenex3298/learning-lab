@@ -206,32 +206,29 @@ function initQueueWorker() {
       const fileBuffer = await downloadFileFromS3(docRecord.s3Key);
       console.log("File downloaded, size:", fileBuffer.length);
 
-      // 2. Extract text from file based on file type
-      console.log("Extracting text...");
-      const extractedText = await TextExtraction(fileBuffer, docRecord.fileType, process.env.S3_BUCKET, docRecord.s3Key);
-      console.log("Text extracted (first 100 chars):", extractedText.substring(0, 100));
+      // Only extract and upload transcript if file is audio or video.
+      if (docRecord.fileType.startsWith('audio/') || docRecord.fileType.startsWith('video/')) {
+        console.log("Extracting transcript for audio/video file...");
+        const extractedText = await TextExtraction(
+          fileBuffer,
+          docRecord.fileType,
+          process.env.S3_BUCKET,
+          docRecord.s3Key
+        );
+        console.log("Transcript extracted (first 100 chars):", extractedText.substring(0, 100));
 
-      // 2.5 Upload the extracted text as a separate file in S3 under "txt" subfolder.
-      // Use the same base name as the original, append '_transcript.txt'
-      const originalKey = docRecord.s3Key; // e.g., "docs/<uuid>_sample_audio.mp3"
-      const filenamePart = originalKey.split('/')[1]; // e.g., "<uuid>_sample_audio.mp3"
-      const baseName = filenamePart.replace(/\.[^/.]+$/, ""); // remove extension
-      const transcriptKey = `text/${baseName}_transcript.txt`;  // updated prefix to "text/"
-      await uploadFileToS3(transcriptKey, Buffer.from(extractedText, 'utf8'));
-      console.log("Extracted transcript stored at S3 key:", transcriptKey);
+        const originalKey = docRecord.s3Key;
+        const filenamePart = originalKey.split('/')[1];
+        const baseName = filenamePart.replace(/\.[^/.]+$/, "");
+        const transcriptKey = `text/${baseName}_transcript.txt`;
+        await uploadFileToS3(transcriptKey, Buffer.from(extractedText, 'utf8'));
+        console.log("Extracted transcript stored at S3 key:", transcriptKey);
+        docRecord.textS3Key = transcriptKey;
+      } else {
+        console.log("Skipping transcript extraction for non-audio/video file.");
+      }
 
-      // 3. Summarize text (placeholder)
-      console.log("Summarizing text...");
-      const summary = await Summarization(extractedText);
-      console.log("Summary generated:", summary);
-
-      // 4. Integrate with LLM (placeholder)
-      console.log("Integrating with LLM...");
-      await LLMIntegration(extractedText, summary);
-
-      // 5. Update MongoDB record: store reference to transcript file, summary, update status.
-      docRecord.textS3Key = transcriptKey;
-      docRecord.summary = summary;
+      // Update MongoDB record: mark as processed.
       docRecord.status = 'processed';
       await docRecord.save();
       console.log("Document record updated successfully for job:", job.id);
@@ -244,48 +241,6 @@ function initQueueWorker() {
   console.log("Queue Worker is set up and listening for jobs.");
 }
 
-
-
-/**
- * Summarization
- * -----------------------------------------------------------------------------
- * Invokes an AWS Bedrock model to generate a summary of the extracted text.
- *
- * @param {string} fullText - The extracted text content.
- * @returns {string} A summary of the text.
- */
-async function Summarization(fullText) {
-  try {
-    const params = {
-      modelId: "huggingface-textgeneration2-gpt-neox-20b-fp16", // Confirm this model ID per documentation.
-      body: fullText, // Use "body" instead of "Content"
-      // Add any additional parameters if required.
-    };
-    const command = new InvokeModelCommand(params);
-    const response = await bedrockClient.send(command);
-    return response.OutputText || "";
-  } catch (error) {
-    console.error("Error invoking Bedrock model:", error);
-    return `Summary placeholder for text: ${fullText.slice(0, 50)}...`;
-  }
-}
-
-
-
-
-
-/**
- * LLMIntegration
- * -----------------------------------------------------------------------------
- * Placeholder for integrating with a Language Model using the extracted text
- * and its summary.
- *
- * @param {string} extractedText - The extracted document text.
- * @param {string} summary - The generated summary of the text.
- */
-async function LLMIntegration(extractedText, summary) {
-  console.log('LLM updated with new document content and summary.');
-}
 
 module.exports = {
   docProcessQueue,

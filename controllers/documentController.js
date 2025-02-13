@@ -38,6 +38,9 @@ async function uploadDocument(req, res) {
     await uploadFileToS3(fileKey, file.buffer);
 
     // Construct S3 URI using bucket name.
+    const fileUrl = `${process.env.CLOUND_FRONT_URL}/${fileKey}`;
+
+    // Construct S3 URI using bucket name.
     const s3Uri = `s3://${process.env.S3_BUCKET}/${fileKey}`;
 
     // Use provided name or default to original file name.
