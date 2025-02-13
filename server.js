@@ -16,6 +16,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const { initQueueWorker } = require('./services/docProcessingQueue');
 const documentRoutes = require('./routes/documentRoutes');
+const authenticateToken = require('./middleware/authMiddleware');
 
 async function initLearningLabModule() {
   // Connect to MongoDB using the URI from environment variables.
@@ -24,6 +25,12 @@ async function initLearningLabModule() {
   // Initialize Express and configure middleware.
   const app = express();
   app.use(express.json());
+
+  // Initialize Test User
+  app.use((req, res, next) => {
+    req.user = { _id: 'test-user-id' };
+    next();
+  });
 
   // Home route to confirm API is running.
   app.get('/', (req, res) => {

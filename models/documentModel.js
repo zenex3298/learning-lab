@@ -8,6 +8,7 @@
 const mongoose = require('mongoose');
 
 const DocumentSchema = new mongoose.Schema({
+  userId: { type: String, required: true }, // Added to store user info
   name: { type: String, required: true },         // User-supplied or default document name.
   filename: { type: String, required: true },     // Original file name.
   fileType: { type: String, required: true },     // MIME type of the file.

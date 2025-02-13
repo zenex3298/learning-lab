@@ -58,6 +58,7 @@ async function uploadDocument(req, res) {
 
     // Create a new document record in MongoDB.
     const newDoc = await DocumentModel.create({
+      userId: req.user._id,
       name: name,
       filename: file.originalname,
       fileType: file.mimetype,
@@ -90,7 +91,9 @@ async function addOrUpdateTags(req, res) {
     if (!doc) {
       return res.status(404).json({ error: 'Document not found.' });
     }
-    // Only accept array of tags; otherwise default to empty array.
+    if (doc.userId.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ error: 'Unauthorized access.' });
+    }
     doc.tags = Array.isArray(tags) ? tags : [];
     await doc.save();
     return res.json({ message: 'Tags updated.', document: doc });
@@ -107,6 +110,10 @@ async function getDocumentStatus(req, res) {
     if (!doc) {
       return res.status(404).json({ error: 'Document not found.' });
     }
+    // Verify that the document belongs to the authenticated user.
+    if (doc.userId.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ error: 'Unauthorized access.' });
+    }
     return res.json({ document: doc });
   } catch (err) {
     console.error(err);
@@ -118,8 +125,7 @@ async function getDocumentStatus(req, res) {
 async function searchDocuments(req, res) {
   try {
     const { name, tags } = req.query;
-    let query = {};
-
+    let query = { userId: req.user._id };
     if (name) {
       query.name = { $regex: name, $options: 'i' };
     }
@@ -137,21 +143,26 @@ async function searchDocuments(req, res) {
   }
 }
 
+
 // Delete Document: Removes a document record from MongoDB and optionally its S3 file.
 async function deleteDocument(req, res) {
   try {
     const docId = req.params.id;
-    const doc = await DocumentModel.findByIdAndDelete(docId);
+    const doc = await DocumentModel.findById(docId);
     if (!doc) {
       return res.status(404).json({ error: 'Document not found.' });
     }
-    // Note: Consider adding S3 deletion logic here if needed.
+    if (doc.userId.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ error: 'Unauthorized access.' });
+    }
+    await DocumentModel.findByIdAndDelete(docId);
     return res.json({ message: 'Document deleted successfully.' });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: 'Deletion failed.' });
   }
 }
+
 
 module.exports = {
   uploadDocument,
