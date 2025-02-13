@@ -1,15 +1,16 @@
-# Learning Lab Module 
+# Learning Lab Module
 
 ## Overview
 
-The Learning Lab Module is a RESTful API service that allows users to upload a variety of document types (up to 1GB), process them (text extraction, conversion, indexing, summarization), and update an LLM (via RAG or fine-tuning) with the extracted content. It stores metadata in MongoDB and files in AWS S3.
+The Learning Lab Module is a RESTful API service that allows users to upload a variety of document types (up to 1GB), process them (text extraction, conversion, indexing, summarization, and moderation), and update an LLM (via RAG or fine-tuning) with the extracted content. It stores metadata in MongoDB and files in AWS S3.
 
 ## Features
 
 - **Document Upload & Storage**: Securely upload files and store them in AWS S3.
-- **Processing Pipeline**: Extract text using OCR (Tesseract.js for images) or PDF parsing (pdf-parse), perform conversion, indexing, and summarization.
+- **Processing Pipeline**: Extract text using AWS Textract (images), AWS Transcribe (audio/video), PDF parsing (pdf-parse), Excel (xlsx), Word (mammoth), and CSV processing.
 - **Metadata & Tagging**: Store and manage document metadata and tags in MongoDB.
 - **Asynchronous Processing**: Utilize Bull and Redis for handling asynchronous processing.
+- **Content Moderation**: Uses AWS Rekognition to detect inappropriate content in images and videos before storing them.
 - **API Endpoints**: Endpoints for uploading, checking status, tagging, searching, and deleting documents.
 - **RAG Integration**: Processed text is stored in S3 and can be retrieved for use in a Retrieval-Augmented Generation (RAG) pipeline for an LLM.
 
@@ -18,35 +19,38 @@ The Learning Lab Module is a RESTful API service that allows users to upload a v
 ### File Upload & S3 Key
 The document is uploaded to S3 under the `docs/` folder (e.g., `docs/sample.pdf`).
 
-### Text Extraction
-After downloading the original file and extracting text, the code creates a new key by taking the original file’s key, removing its extension, and prepending the `text/` folder, then appending `.txt`. For example, if the original key is `docs/sample.pdf`, the text file key becomes `text/sample.txt`.
+### Text Extraction & Moderation
+- AWS Textract extracts text from images.
+- AWS Transcribe processes audio/video files into text.
+- Rekognition moderates image and video content for inappropriate materials before allowing storage.
 
 ### Upload Extracted Text
-The extracted text is converted to a UTF‑8 buffer and uploaded to S3 under the newly constructed key.
+The extracted text is converted to a UTF‑8 buffer and uploaded to S3 under the `text/` folder.
 
 ### Subsequent Processing
-The code then continues with summarization, placeholder LLM integration, and updates the MongoDB record.
+- Summarization
+- LLM integration
+- Metadata updates in MongoDB
 
 ### Accessing Files on AWS for RAG
-
-To access the extracted text files stored in S3 for Retrieval-Augmented Generation (RAG):
+To access extracted text files stored in S3 for Retrieval-Augmented Generation (RAG):
 
 1. **List Available Processed Files**
    ```sh
    aws s3 ls s3://YOUR_S3_BUCKET/text/
    ```
-   
+
 2. **Download an Extracted Text File**
    ```sh
    aws s3 cp s3://YOUR_S3_BUCKET/text/<filename>.txt ./
    ```
-   
+
 3. **Retrieve a File's Content for LLM Input**
    ```sh
    aws s3api get-object --bucket YOUR_S3_BUCKET --key text/<filename>.txt output.txt
    cat output.txt
    ```
-   
+
 4. **Direct Programmatic Retrieval (Python Example)**
    ```python
    import boto3
@@ -59,6 +63,30 @@ To access the extracted text files stored in S3 for Retrieval-Augmented Generati
    ```
 
 ## Setup
+
+### AWS Configuration
+
+Before running the application, configure your AWS credentials and set up an IAM user with the necessary policies.
+
+```sh
+# Configure AWS CLI (replace placeholders with your actual credentials)
+aws configure set aws_access_key_id YOUR_ACCESS_KEY_ID
+aws configure set aws_secret_access_key YOUR_SECRET_ACCESS_KEY
+aws configure set default.region YOUR_DEFAULT_REGION
+
+# Verify AWS credentials
+aws sts get-caller-identity
+
+# Create a new IAM user (replace NSFWUser with your desired username)
+aws iam create-user --user-name NSFWUser
+
+# Attach AWS managed policies to the new user
+aws iam attach-user-policy --user-name NSFWUser --policy-arn arn:aws:iam::aws:policy/AmazonBedrockFullAccess
+aws iam attach-user-policy --user-name NSFWUser --policy-arn arn:aws:iam::aws:policy/AmazonRekognitionFullAccess
+aws iam attach-user-policy --user-name NSFWUser --policy-arn arn:aws:iam::aws:policy/AmazonS3FullAccess
+aws iam attach-user-policy --user-name NSFWUser --policy-arn arn:aws:iam::aws:policy/AmazonTextractFullAccess
+aws iam attach-user-policy --user-name NSFWUser --policy-arn arn:aws:iam::aws:policy/AmazonTranscribeFullAccess
+```
 
 ### Prerequisites
 
@@ -170,3 +198,4 @@ curl "http://localhost:3000/documents?name=My%20Document&tags=tag1,tag2"
 ```sh
 curl -X DELETE http://localhost:3000/documents/<documentId>
 ```
+
