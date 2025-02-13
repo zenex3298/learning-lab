@@ -1,4 +1,4 @@
-# Learning Lab Module
+# Learning Lab Module 
 
 ## Overview
 
