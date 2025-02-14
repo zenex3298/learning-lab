@@ -24,3 +24,9 @@ build/
 # Coding Files
 prep_codebase.app
 consolidated_files.txt
+MongoSetup.sh
+
+# Elastic Beanstalk Files
+.elasticbeanstalk/*
+!.elasticbeanstalk/*.cfg.yml
+!.elasticbeanstalk/*.global.yml

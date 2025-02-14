@@ -86,6 +86,7 @@ aws iam attach-user-policy --user-name NSFWUser --policy-arn arn:aws:iam::aws:po
 aws iam attach-user-policy --user-name NSFWUser --policy-arn arn:aws:iam::aws:policy/AmazonS3FullAccess
 aws iam attach-user-policy --user-name NSFWUser --policy-arn arn:aws:iam::aws:policy/AmazonTextractFullAccess
 aws iam attach-user-policy --user-name NSFWUser --policy-arn arn:aws:iam::aws:policy/AmazonTranscribeFullAccess
+aws iam attach-user-policy --user-name NSFWUser --policy-arn arn:aws:iam::aws:policy/AWSElasticBeanstalkFullAccess
 ```
 
 ### Prerequisites
