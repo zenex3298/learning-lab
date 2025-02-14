@@ -77,16 +77,20 @@ aws configure set default.region YOUR_DEFAULT_REGION
 # Verify AWS credentials
 aws sts get-caller-identity
 
-# Create a new IAM user (replace NSFWUser with your desired username)
-aws iam create-user --user-name NSFWUser
+# Create a new IAM user (replace testUser with your desired username)
+aws iam create-user --user-name testUser
 
 # Attach AWS managed policies to the new user
-aws iam attach-user-policy --user-name NSFWUser --policy-arn arn:aws:iam::aws:policy/AmazonBedrockFullAccess
-aws iam attach-user-policy --user-name NSFWUser --policy-arn arn:aws:iam::aws:policy/AmazonRekognitionFullAccess
-aws iam attach-user-policy --user-name NSFWUser --policy-arn arn:aws:iam::aws:policy/AmazonS3FullAccess
-aws iam attach-user-policy --user-name NSFWUser --policy-arn arn:aws:iam::aws:policy/AmazonTextractFullAccess
-aws iam attach-user-policy --user-name NSFWUser --policy-arn arn:aws:iam::aws:policy/AmazonTranscribeFullAccess
-aws iam attach-user-policy --user-name NSFWUser --policy-arn arn:aws:iam::aws:policy/AWSElasticBeanstalkFullAccess
+aws iam attach-user-policy --user-name testUser --policy-arn arn:aws:iam::aws:policy/AdministratorAccess-AWSElasticBeanstalk
+aws iam attach-user-policy --user-name testUser --policy-arn arn:aws:iam::aws:policy/AmazonBedrockFullAccess
+aws iam attach-user-policy --user-name testUser --policy-arn arn:aws:iam::aws:policy/AmazonEC2FullAccess
+aws iam attach-user-policy --user-name testUser --policy-arn arn:aws:iam::aws:policy/AmazonRekognitionFullAccess
+aws iam attach-user-policy --user-name testUser --policy-arn arn:aws:iam::aws:policy/AmazonS3FullAccess
+aws iam attach-user-policy --user-name testUser --policy-arn arn:aws:iam::aws:policy/AmazonTextractFullAccess
+aws iam attach-user-policy --user-name testUser --policy-arn arn:aws:iam::aws:policy/AmazonTranscribeFullAccess
+aws iam attach-user-policy --user-name testUser --policy-arn arn:aws:iam::aws:policy/AWSCodeCommitFullAccess
+aws iam attach-user-policy --user-name testUser --policy-arn arn:aws:iam::aws:policy/AWSElasticBeanstalkWebTier
+aws iam attach-user-policy --user-name testUser --policy-arn arn:aws:iam::aws:policy/AWSElasticBeanstalkWorkerTier
 ```
 
 ### Prerequisites
