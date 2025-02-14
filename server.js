@@ -12,6 +12,7 @@
  */
 
 require('dotenv').config();
+console.log("Mongo URI:", process.env.MONGODB_URI);
 const express = require('express');
 const mongoose = require('mongoose');
 const { initQueueWorker } = require('./services/docProcessingQueue');
@@ -20,7 +21,9 @@ const authenticateToken = require('./middleware/authMiddleware');
 
 async function initLearningLabModule() {
   // Connect to MongoDB using the URI from environment variables.
-  await mongoose.connect(process.env.MONGODB_URI);
+  await mongoose.connect(process.env.MONGODB_URI, {
+    tls: true,
+  });
 
   // Initialize Express and configure middleware.
   const app = express();
@@ -43,10 +46,10 @@ async function initLearningLabModule() {
   // Initialize the asynchronous document processing queue worker.
   initQueueWorker();
 
-  // Start the server on the defined PORT or default to 3000.
-  const PORT = process.env.PORT || 3000;
-  app.listen(PORT, () => {
-    console.log(`Learning Lab Module running on port ${PORT}`);
+  // Start the server on the defined PORT or default to 8080.
+  const PORT = process.env.PORT || 8080;
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on port ${PORT}`);
   });
 }
 

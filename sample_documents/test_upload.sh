@@ -4,7 +4,12 @@ DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 scriptName=$(basename "$0")
 
 # Set the endpoint to your EB environment CNAME
-endpoint="http://learning-lab.eba-db3tqpp8.us-east-1.elasticbeanstalk.com/documents/upload" #http://localhost:3000/documents/upload \
+domain="http://learning-labs-demo5.eba-pnqceuvt.us-east-1.elasticbeanstalk.com"
+#"http://localhost:3000"
+
+endpoint="$domain/documents/upload/"
+
+echo "Using endpoint: $endpoint"
 
 for file in "$DIR"/*; do
   [ -f "$file" ] || continue
