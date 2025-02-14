@@ -16,7 +16,7 @@ const { downloadFileFromS3, uploadFileToS3, deleteFileFromS3 } = require('./s3Se
 const { TextractClient, DetectDocumentTextCommand } = require("@aws-sdk/client-textract");
 const { TranscribeClient, StartTranscriptionJobCommand, GetTranscriptionJobCommand } = require("@aws-sdk/client-transcribe");
 const { v4: uuidv4 } = require('uuid');
-const fetch = require('node-fetch');
+const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
 
 const textractClient = new TextractClient({ region: process.env.AWS_REGION });
 const transcribeClient = new TranscribeClient({ region: process.env.AWS_REGION });
