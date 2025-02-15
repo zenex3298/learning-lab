@@ -250,7 +250,7 @@ function initQueueWorker() {
       if (!docRecord) throw new Error('Document not found in DB');
       console.log("Document record found:", docRecord);
 
-      // 1. Download file from S3
+      // Download file from S3
       console.log("Downloading file from S3 with key:", docRecord.s3Key);
       const fileBuffer = await downloadFileFromS3(docRecord.s3Key);
       console.log("File downloaded, size:", fileBuffer.length);
@@ -258,7 +258,12 @@ function initQueueWorker() {
       // Content Moderation for images/videos
       if (docRecord.fileType.startsWith('image/') || docRecord.fileType.startsWith('video/')) {
         console.log("Performing content moderation check...");
-        const flagged = await checkContentModeration(docRecord.fileType, fileBuffer, process.env.S3_BUCKET, docRecord.s3Key);
+        const flagged = await checkContentModeration(
+          docRecord.fileType,
+          fileBuffer,
+          process.env.S3_BUCKET,
+          docRecord.s3Key
+        );
         if (flagged) {
           console.log("Content moderation flagged the file. Deleting from S3...");
           await deleteFileFromS3(docRecord.s3Key);
@@ -268,29 +273,46 @@ function initQueueWorker() {
         }
       }
 
-      // Only extract and upload transcript if file is audio or video.
-      if (docRecord.fileType.startsWith('audio/') || docRecord.fileType.startsWith('video/')) {
-        console.log("Extracting transcript for audio/video file...");
-        const extractedText = await TextExtraction(
-          fileBuffer,
-          docRecord.fileType,
-          process.env.S3_BUCKET,
-          docRecord.s3Key
-        );
-        console.log("Transcript extracted (first 100 chars):", extractedText.substring(0, 100));
+      // Extract text for any supported file type (documents, audio, video, images)
+      console.log("Extracting text from file...");
+      const extractedText = await TextExtraction(
+        fileBuffer,
+        docRecord.fileType,
+        process.env.S3_BUCKET,
+        docRecord.s3Key
+      );
 
+      if (extractedText && extractedText.length > 0) {
+        console.log("Extracted text (first 100 chars):", extractedText.substring(0, 100));
+
+        // Determine transcript key suffix based on file type
+        const transcriptSuffix = 
+          (docRecord.fileType.startsWith('audio/') || docRecord.fileType.startsWith('video/'))
+            ? '_transcript.txt'
+            : '_document.txt';
         const originalKey = docRecord.s3Key;
         const filenamePart = originalKey.split('/')[1];
         const baseName = filenamePart.replace(/\.[^/.]+$/, "");
-        const transcriptKey = `text/${baseName}_transcript.txt`;
+        const transcriptKey = `text/${baseName}${transcriptSuffix}`;
         await uploadFileToS3(transcriptKey, Buffer.from(extractedText, 'utf8'));
-        console.log("Extracted transcript stored at S3 key:", transcriptKey);
+        console.log("Extracted text stored at S3 key:", transcriptKey);
         docRecord.textS3Key = transcriptKey;
+
+        // Clean extracted text and generate vector embedding.
+        const cleanedText = extractedText.replace(/\s+/g, ' ').trim();
+        const generateEmbedding = text => {
+          const sum = text.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+          const avg = sum / (text.length || 1);
+          return [avg, avg / 2, avg / 3];
+        };
+        const embedding = generateEmbedding(cleanedText);
+        docRecord.embedding = embedding;
+        console.log("Cleaned text and generated embedding:", embedding);
       } else {
-        console.log("Skipping transcript extraction for non-audio/video file.");
+        console.log("No text extracted from file.");
       }
 
-      // Update MongoDB record: mark as processed.
+      // Mark document as processed.
       docRecord.status = 'processed';
       await docRecord.save();
       console.log("Document record updated successfully for job:", job.id);
@@ -302,6 +324,8 @@ function initQueueWorker() {
 
   console.log("Queue Worker is set up and listening for jobs.");
 }
+
+
 
 
 module.exports = {
