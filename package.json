@@ -21,6 +21,7 @@
     "@aws-sdk/client-s3": "^3.744.0",
     "@aws-sdk/client-textract": "^3.744.0",
     "@aws-sdk/client-transcribe": "^3.744.0",
+    "@opensearch-project/opensearch": "^3.3.0",
     "axios": "^1.7.9",
     "bull": "^4.16.5",
     "dotenv": "^16.4.7",

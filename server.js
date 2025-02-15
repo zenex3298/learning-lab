@@ -17,6 +17,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const { initQueueWorker } = require('./services/docProcessingQueue');
 const documentRoutes = require('./routes/documentRoutes');
+const generateRoutes = require('./routes/generateRoutes'); // Ensure this file exists!
 const authenticateToken = require('./middleware/authMiddleware');
 
 async function initLearningLabModule() {
@@ -42,6 +43,9 @@ async function initLearningLabModule() {
 
   // Attach document routes under the '/documents' endpoint.
   app.use('/documents', documentRoutes);
+
+  // Attach generate route at '/generate'
+  app.use('/generate', generateRoutes);
 
   // Initialize the asynchronous document processing queue worker.
   initQueueWorker();

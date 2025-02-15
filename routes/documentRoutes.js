@@ -7,6 +7,7 @@
  *   - GET /:id/status        -> Retrieve document processing status.
  *   - GET /                 -> Search documents by name and tags.
  *   - DELETE /:id            -> Delete a document.
+ *   - POST /generate         -> Generate response from prompt.
  * -----------------------------------------------------------------------------
  */
 
@@ -19,6 +20,7 @@ const {
   searchDocuments,
   deleteDocument,
 } = require('../controllers/documentController');
+const { generateFromPrompt } = require('../controllers/generateController');
 
 const router = express.Router();
 
@@ -35,5 +37,6 @@ router.post('/:id/tags', addOrUpdateTags);
 router.get('/:id/status', getDocumentStatus);
 router.get('/', searchDocuments);
 router.delete('/:id', deleteDocument);
+router.post('/generate', generateFromPrompt);
 
 module.exports = router;
